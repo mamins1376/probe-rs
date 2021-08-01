@@ -174,6 +174,19 @@ impl Esp {
             }
         }
 
+        // drain any leftover bytes - esp8266 will usually send multiple Syncs
+        self.set_timeout(Duration::ZERO)?;
+        loop {
+            match self.decoder.decode(&mut self.serial, &mut self.buffer) {
+                Ok(_) => (),
+                Err(slip_codec::Error::ReadError(e)) => match e.kind() {
+                    std::io::ErrorKind::TimedOut => break,
+                    _ => Err(DebugProbeError::Io(e))?,
+                },
+                Err(_) => Err(Self::error("Invalid SLIP packet recevied"))?,
+            }
+        }
+
         self.set_timeout(Self::DEFAULT_TIMEOUT)?;
 
         Ok(())
