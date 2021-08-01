@@ -5,6 +5,8 @@ pub(crate) mod fake_probe;
 pub(crate) mod ftdi;
 pub(crate) mod jlink;
 pub(crate) mod stlink;
+#[cfg(feature = "esp")]
+pub(crate) mod esp;
 
 use crate::architecture::{
     arm::{
@@ -123,6 +125,8 @@ pub enum DebugProbeError {
     CommandNotSupportedByProbe(&'static str),
     #[error("Unable to set hardware breakpoint, all available breakpoint units are in use.")]
     BreakpointUnitsExceeded,
+    #[error("Cannot communicate through IO device")]
+    Io(#[from] std::io::Error),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -202,6 +206,11 @@ impl Probe {
 
         list.extend(list_espjtag_devices());
 
+        #[cfg(feature = "esp")]
+        {
+            list.extend(esp::list_esp_devices());
+        }
+
         list
     }
 
@@ -231,6 +240,12 @@ impl Probe {
             Err(e) => return Err(e),
         };
         match espusbjtag::EspUsbJtag::new_from_selector(selector) {
+            Ok(link) => return Ok(Probe::from_specific_probe(link)),
+            Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
+            Err(e) => return Err(e),
+        };
+        #[cfg(feature = "esp")]
+        match esp::Esp::new_from_selector(selector) {
             Ok(link) => return Ok(Probe::from_specific_probe(link)),
             Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
             Err(e) => return Err(e),
@@ -514,6 +529,7 @@ pub enum DebugProbeType {
     StLink,
     JLink,
     EspJtag,
+    Esp,
 }
 
 #[derive(Clone)]

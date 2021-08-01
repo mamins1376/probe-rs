@@ -14,6 +14,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 ftdi = ["probe-rs/ftdi"]
+esp = ["probe-rs/esp"]
 
 [dependencies]
 probe-rs = { path = "../probe-rs", version = "0.11.0" }
