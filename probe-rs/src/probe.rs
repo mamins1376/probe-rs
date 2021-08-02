@@ -19,8 +19,17 @@ use crate::architecture::{
 use crate::error::Error;
 use crate::Session;
 use crate::{
-    architecture::arm::communication_interface::UninitializedArmProbe,
+    architecture::{
+        arm::{
+            ap::memory_ap::mock::MockMemoryAp,
+            communication_interface::{ArmProbeInterface, UninitializedArmProbe},
+            PortType, RawDapAccess, SwoAccess,
+        },
+        riscv::communication_interface::RiscvCommunicationInterface,
+        xtensa::communication_interface::XtensaProbeInterface,
+    },
     config::{RegistryError, TargetSelector},
+    Memory,
 };
 use jlink::list_jlink_devices;
 use std::{convert::TryFrom, fmt};
@@ -35,6 +44,7 @@ const LOW_TARGET_VOLTAGE_WARNING_THRESHOLD: f32 = 1.4;
 pub enum WireProtocol {
     Swd,
     Jtag,
+    Esp,
 }
 
 impl fmt::Display for WireProtocol {
@@ -42,6 +52,7 @@ impl fmt::Display for WireProtocol {
         match self {
             WireProtocol::Swd => write!(f, "SWD"),
             WireProtocol::Jtag => write!(f, "JTAG"),
+            WireProtocol::Esp => write!(f, "ESP"),
         }
     }
 }
@@ -403,6 +414,20 @@ impl Probe {
         }
     }
 
+    pub fn has_xtensa_interface(&self) -> bool {
+        self.inner.has_xtensa_interface()
+    }
+
+    pub fn try_into_xtensa_interface(self) -> Result<XtensaProbeInterface, (Self, DebugProbeError)> {
+        if !self.attached {
+            Err((self, DebugProbeError::NotAttached))
+        } else {
+            self.inner
+                .try_get_xtensa_interface()
+                .map_err(|(probe, err)| (Probe::from_attached_probe(probe), err))
+        }
+    }
+
     pub fn get_swo_interface(&self) -> Option<&dyn SwoAccess> {
         self.inner.get_swo_interface()
     }
@@ -499,6 +524,19 @@ pub trait DebugProbe: Send + fmt::Debug {
     /// Check if the probe offers an interface to debug RISCV chips.
     fn has_riscv_interface(&self) -> bool {
         false
+    }
+
+    fn has_xtensa_interface(&self) -> bool {
+        false
+    }
+
+    fn try_get_xtensa_interface(
+        self: Box<Self>,
+    ) -> Result<XtensaProbeInterface, (Box<dyn DebugProbe>, DebugProbeError)> {
+        Err((
+            self.into_probe(),
+            DebugProbeError::InterfaceNotAvailable("XTENSA"),
+        ))
     }
 
     fn get_swo_interface(&self) -> Option<&dyn SwoAccess> {

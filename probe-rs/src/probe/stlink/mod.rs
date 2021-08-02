@@ -83,6 +83,7 @@ impl DebugProbe for StLink<StLinkUsbDevice> {
         match self.protocol {
             WireProtocol::Swd => self.swd_speed_khz,
             WireProtocol::Jtag => self.jtag_speed_khz,
+            WireProtocol::Esp => 0,
         }
     }
 
@@ -115,6 +116,9 @@ impl DebugProbe for StLink<StLinkUsbDevice> {
                         Err(DebugProbeError::UnsupportedSpeed(speed_khz))
                     }
                 }
+                WireProtocol::Esp => {
+                    Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+                }
             },
             Ordering::Equal => {
                 let (available, _) = self.get_communication_frequencies(self.protocol)?;
@@ -130,6 +134,9 @@ impl DebugProbe for StLink<StLinkUsbDevice> {
                 match self.protocol {
                     WireProtocol::Swd => self.swd_speed_khz = actual_speed_khz,
                     WireProtocol::Jtag => self.jtag_speed_khz = actual_speed_khz,
+                    WireProtocol::Esp => {
+                        Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+                    }
                 }
 
                 Ok(actual_speed_khz)
@@ -150,6 +157,9 @@ impl DebugProbe for StLink<StLinkUsbDevice> {
             WireProtocol::Swd => {
                 log::debug!("Switching protocol to SWD");
                 commands::JTAG_ENTER_SWD
+            }
+            WireProtocol::Esp => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
             }
         };
 
@@ -187,6 +197,9 @@ impl DebugProbe for StLink<StLinkUsbDevice> {
             }
             WireProtocol::Swd => {
                 self.set_speed(self.swd_speed_khz)?;
+            }
+            WireProtocol::Esp => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
             }
         }
 
@@ -248,6 +261,9 @@ impl DebugProbe for StLink<StLinkUsbDevice> {
         match protocol {
             WireProtocol::Jtag => self.protocol = WireProtocol::Jtag,
             WireProtocol::Swd => self.protocol = WireProtocol::Swd,
+            WireProtocol::Esp => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+            }
         }
         Ok(())
     }
@@ -537,6 +553,9 @@ impl<D: StLinkUsb> StLink<D> {
         let cmd_proto = match protocol {
             WireProtocol::Swd => 0,
             WireProtocol::Jtag => 1,
+            WireProtocol::Esp => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+            }
         };
 
         let mut command = vec![commands::JTAG_COMMAND, commands::SET_COM_FREQ, cmd_proto, 0];
@@ -560,6 +579,9 @@ impl<D: StLinkUsb> StLink<D> {
         let cmd_proto = match protocol {
             WireProtocol::Swd => 0,
             WireProtocol::Jtag => 1,
+            WireProtocol::Esp => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+            }
         };
 
         let mut buf = [0; 52];

@@ -10,6 +10,7 @@ use probe_rs::{
             ApAddress, ApInformation, ArmProbeInterface, DpAddress, MemoryApInformation,
         },
         riscv::communication_interface::RiscvCommunicationInterface,
+        xtensa::communication_interface::XtensaProbeInterface,
     },
     CoreRegister, Probe, WireProtocol,
 };
@@ -23,7 +24,7 @@ pub(crate) fn show_info_of_device(common: &ProbeOptions) -> Result<()> {
     let protocols = if let Some(protocol) = common.protocol {
         vec![protocol]
     } else {
-        vec![WireProtocol::Jtag, WireProtocol::Swd]
+        vec![WireProtocol::Jtag, WireProtocol::Swd, WireProtocol::Esp]
     };
 
     for protocol in protocols {
@@ -112,6 +113,21 @@ fn try_show_info(
         }
     }
 
+    if probe.has_xtensa_interface() {
+        match probe.try_into_xtensa_interface() {
+            Ok(mut interface) => {
+                if let Err(e) = show_xtensa_info(&mut interface) {
+                    log::warn!("Error showing XTENSA chip information: {}", e);
+                }
+
+                probe = interface.close();
+            }
+            Err((interface_probe, _e)) => {
+                probe = interface_probe;
+            }
+        }
+    }
+
     (probe, Ok(()))
 }
 
@@ -189,4 +205,8 @@ fn show_riscv_info(interface: &mut RiscvCommunicationInterface) -> Result<()> {
     println!("\t Manufacturer: {} ({})", manufacturer_id, jep_id);
 
     Ok(())
+}
+
+fn show_xtensa_info(_interface: &mut XtensaProbeInterface) -> Result<()> {
+    todo!()
 }

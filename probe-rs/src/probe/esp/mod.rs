@@ -1,4 +1,5 @@
 use crate::*;
+use crate::architecture::xtensa::communication_interface::XtensaProbeInterface;
 
 use serial::{*, core::SerialDevice};
 use slip_codec::{Decoder, Encoder};
@@ -49,19 +50,29 @@ pub(crate) fn list_esp_devices() -> impl Iterator<Item=DebugProbeInfo> {
 }
 
 pub(crate) struct Esp {
-    serial: SystemPort,
-    encoder: Encoder,
-    decoder: Decoder,
-    buffer: Vec<u8>,
+    tty: String,
+    interface: Option<EspInterface>,
+}
+
+impl Esp {
+    const VENDOR_ID: u16 = 0;
+    const PRODUCT_ID: u16 = 0;
 }
 
 impl DebugProbe for Esp {
     fn attach(&mut self) -> ProbeResult<()> {
-        todo!()
+        Ok(if self.interface.is_none() {
+            let mut interface = EspInterface::new(&self.tty)
+                .map_err(EspInterface::to_probe_error)?;
+            interface.attach()?;
+            self.interface = Some(interface)
+        })
     }
 
     fn detach(&mut self) -> ProbeResult<()> {
-        todo!()
+        Ok(if let Some(interface) = self.interface.as_mut() {
+            interface.detach()?
+        })
     }
 
     fn get_name(&self) -> &str {
@@ -80,32 +91,33 @@ impl DebugProbe for Esp {
             serial_number,
         } = selector.into();
 
-        let serial = match (vendor_id == Self::VENDOR_ID && product_id == Self::PRODUCT_ID, serial_number) {
-            (true, Some(tty)) => open(&tty).map_err(Self::to_probe_error),
-            _ => Err(ProbeCreationError::NotFound),
-        }?;
+        let tty = match (vendor_id == Self::VENDOR_ID && product_id == Self::PRODUCT_ID, serial_number) {
+            (true, Some(tty)) => tty,
+            _ => Err(ProbeCreationError::NotFound)?,
+        };
 
-        let mut me = Self::new(serial);
-        me.connect()?;
-        Ok(me.into())
+        Ok(Self {
+            tty,
+            interface: None,
+        }.into())
     }
 
     fn select_protocol(&mut self, protocol: WireProtocol) -> ProbeResult<()> {
-        Err(DebugProbeError::UnsupportedProtocol(protocol))
+        match protocol {
+            WireProtocol::Esp => Ok(()),
+            _ => Err(DebugProbeError::UnsupportedProtocol(protocol)),
+        }
     }
 
     fn set_speed(&mut self, speed_khz: u32) -> ProbeResult<u32> {
-        self.set_baud(match speed_khz {
-            115 => BaudRate::Baud115200,
-            74 | 75 => BaudRate::BaudOther(74800),
-            _ => Err(DebugProbeError::UnsupportedSpeed(speed_khz))?,
-        })?;
-
-        self.get_baud_khz()
+        match speed_khz {
+            115 => Ok(speed_khz),
+            _ => Err(DebugProbeError::UnsupportedSpeed(speed_khz)),
+        }
     }
 
     fn speed(&self) -> u32 {
-        self.get_baud_khz().unwrap_or(115)
+        115
     }
 
     fn target_reset(&mut self) -> ProbeResult<()> {
@@ -119,6 +131,14 @@ impl DebugProbe for Esp {
     fn target_reset_deassert(&mut self) -> ProbeResult<()> {
         todo!()
     }
+
+    fn has_xtensa_interface(&self) -> bool {
+        true
+    }
+
+    fn try_get_xtensa_interface(self: Box<Self>) -> Result<XtensaProbeInterface, (Box<dyn DebugProbe>, DebugProbeError)> {
+        todo!()
+    }
 }
 
 impl Debug for Esp {
@@ -127,23 +147,27 @@ impl Debug for Esp {
     }
 }
 
-impl Esp {
-    const VENDOR_ID: u16 = 0;
-    const PRODUCT_ID: u16 = 0;
+struct EspInterface {
+    serial: SystemPort,
+    encoder: Encoder,
+    decoder: Decoder,
+    buffer: Vec<u8>,
+}
 
+impl EspInterface {
     const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
     const SYNC_TIMEOUT: Duration = Duration::from_millis(100);
 
-    fn new(serial: SystemPort) -> Self {
-        Self {
-            serial,
+    fn new(tty: impl AsRef<str>) -> serial::core::Result<Self> {
+        Ok(Self {
+            serial: open(tty.as_ref())?,
             decoder: Decoder::new(),
             encoder: Encoder::new(),
             buffer: Vec::new(),
-        }
+        })
     }
 
-    fn connect(&mut self) -> ProbeResult<()> {
+    fn attach(&mut self) -> ProbeResult<()> {
         self.set_baud(BaudRate::Baud115200)?;
         if self.get_baud()? != 115200 {
             Err(Self::error("Cannot set the baud rate to 115200"))?
@@ -156,40 +180,51 @@ impl Esp {
         for _ in 0..7 {
             self.send(sync)?;
 
-            match self.decoder.decode(&mut self.serial, &mut self.buffer) {
-                Ok(_) => (),
-                Err(slip_codec::Error::ReadError(e)) => match e.kind() {
-                    std::io::ErrorKind::TimedOut => continue,
-                    _ => Err(DebugProbeError::Io(e))?,
-                },
-                Err(_) => Err(Self::error("Invalid SLIP packet recevied"))?,
-            }
+            match self.read() {
+                Some(error) => error?,
+                None => continue,
+            };
 
             match Command::parse(&self.buffer) {
                 Ok(resp) => match resp.opcode {
-                    Opcode::Sync => { self.buffer.clear(); break },
+                    Opcode::Sync => break,
                     _ => Err(Self::error("Invalid opcode after sync request"))?,
                 },
                 Err(error) => Err(DebugProbeError::Other(error.into()))?,
             }
         }
 
-        // drain any leftover bytes - esp8266 will usually send multiple Syncs
-        self.set_timeout(Duration::ZERO)?;
-        loop {
-            match self.decoder.decode(&mut self.serial, &mut self.buffer) {
-                Ok(_) => (),
-                Err(slip_codec::Error::ReadError(e)) => match e.kind() {
-                    std::io::ErrorKind::TimedOut => break,
-                    _ => Err(DebugProbeError::Io(e))?,
-                },
-                Err(_) => Err(Self::error("Invalid SLIP packet recevied"))?,
-            }
+        if self.buffer.is_empty() {
+            Err(Self::error("Device did not respond in time"))?
         }
+        self.buffer.clear();
 
+        // drain any leftover bytes - esp8266 will usually send multiple Syncs
+        loop {
+            match self.read() {
+                Some(error) => error?,
+                None => break,
+            };
+        }
+        self.buffer.clear();
         self.set_timeout(Self::DEFAULT_TIMEOUT)?;
 
         Ok(())
+    }
+
+    fn detach(&mut self) -> ProbeResult<()> {
+        todo!()
+    }
+
+    fn read(&mut self) -> Option<ProbeResult<usize>> {
+        match self.decoder.decode(&mut self.serial, &mut self.buffer) {
+            Ok(len) => Some(Ok(len)),
+            Err(slip_codec::Error::ReadError(e)) => match e.kind() {
+                std::io::ErrorKind::TimedOut => None,
+                _ => Some(Err(DebugProbeError::Io(e))),
+            },
+            Err(_) => Some(Err(Self::error("Invalid SLIP packet recevied").into())),
+        }
     }
 
     fn send(&mut self, buf: impl AsRef<[u8]>) -> ProbeResult<()> {
@@ -213,10 +248,6 @@ impl Esp {
             .baud_rate()
             .map(|s| s.speed())
             .ok_or(Self::error("Cannot read baud rate back").into())
-    }
-
-    fn get_baud_khz(&self) -> ProbeResult<u32> {
-        self.get_baud().map(|s| s as u32 / 1000)
     }
 
     fn to_probe_error(error: serial::Error) -> ProbeCreationError {

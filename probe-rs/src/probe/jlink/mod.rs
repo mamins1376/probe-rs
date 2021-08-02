@@ -66,6 +66,9 @@ impl JLink {
                 let jlink_interface = match protocol {
                     WireProtocol::Swd => jaylink::Interface::Swd,
                     WireProtocol::Jtag => jaylink::Interface::Jtag,
+                    WireProtocol::Esp => {
+                        Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+                    }
                 };
 
                 if self.handle.available_interfaces().contains(jlink_interface) {
@@ -528,6 +531,9 @@ impl DebugProbe for JLink {
                 // Attaching is handled in sequence
 
                 // We are ready to debug.
+            }
+            WireProtocol::Esp => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
             }
         }
 
