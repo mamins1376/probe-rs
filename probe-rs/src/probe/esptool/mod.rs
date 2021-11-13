@@ -18,7 +18,7 @@ type IoError = std::io::Error;
 
 type ProbeResult<T> = Result<T, DebugProbeError>;
 
-pub(crate) fn list_esp_devices() -> impl Iterator<Item=DebugProbeInfo> {
+pub(crate) fn list_esptool_devices() -> impl Iterator<Item=DebugProbeInfo> {
     if let Ok(ttys) = var("PROBE_ESP_TTY") {
         ttys.split(':')
             .map(From::from)
@@ -49,21 +49,21 @@ pub(crate) fn list_esp_devices() -> impl Iterator<Item=DebugProbeInfo> {
     })
 }
 
-pub(crate) struct Esp {
+pub(crate) struct Esptool {
     tty: String,
-    interface: Option<EspInterface>,
+    interface: Option<EsptoolInterface>,
 }
 
-impl Esp {
+impl Esptool {
     const VENDOR_ID: u16 = 0;
     const PRODUCT_ID: u16 = 0;
 }
 
-impl DebugProbe for Esp {
+impl DebugProbe for Esptool {
     fn attach(&mut self) -> ProbeResult<()> {
         Ok(if self.interface.is_none() {
-            let mut interface = EspInterface::new(&self.tty)
-                .map_err(EspInterface::to_probe_error)?;
+            let mut interface = EsptoolInterface::new(&self.tty)
+                .map_err(EsptoolInterface::to_probe_error)?;
             interface.attach()?;
             self.interface = Some(interface)
         })
@@ -104,7 +104,7 @@ impl DebugProbe for Esp {
 
     fn select_protocol(&mut self, protocol: WireProtocol) -> ProbeResult<()> {
         match protocol {
-            WireProtocol::Esp => Ok(()),
+            WireProtocol::Esptool => Ok(()),
             _ => Err(DebugProbeError::UnsupportedProtocol(protocol)),
         }
     }
@@ -141,20 +141,20 @@ impl DebugProbe for Esp {
     }
 }
 
-impl Debug for Esp {
+impl Debug for Esptool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         "Esp".fmt(f)
     }
 }
 
-struct EspInterface {
+struct EsptoolInterface {
     serial: SystemPort,
     encoder: Encoder,
     decoder: Decoder,
     buffer: Vec<u8>,
 }
 
-impl EspInterface {
+impl EsptoolInterface {
     const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
     const SYNC_TIMEOUT: Duration = Duration::from_millis(100);
 

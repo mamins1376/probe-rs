@@ -422,8 +422,8 @@ impl DebugProbe for CmsisDap {
             match protocol {
                 WireProtocol::Swd => ConnectRequest::Swd,
                 WireProtocol::Jtag => ConnectRequest::Jtag,
-                WireProtocol::Esp => {
-                    Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))?
+                WireProtocol::Esptool => {
+                    Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esptool))?
                 }
             }
         } else {
@@ -489,8 +489,8 @@ impl DebugProbe for CmsisDap {
                 self.protocol = Some(WireProtocol::Swd);
                 Ok(())
             }
-            WireProtocol::Esp => {
-                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esp))
+            WireProtocol::Esptool => {
+                Err(DebugProbeError::UnsupportedProtocol(WireProtocol::Esptool))
             }
         }
     }

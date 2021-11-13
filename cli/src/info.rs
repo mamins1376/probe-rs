@@ -24,7 +24,7 @@ pub(crate) fn show_info_of_device(common: &ProbeOptions) -> Result<()> {
     let protocols = if let Some(protocol) = common.protocol {
         vec![protocol]
     } else {
-        vec![WireProtocol::Jtag, WireProtocol::Swd, WireProtocol::Esp]
+        vec![WireProtocol::Jtag, WireProtocol::Swd, WireProtocol::Esptool]
     };
 
     for protocol in protocols {

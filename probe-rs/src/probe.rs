@@ -5,33 +5,22 @@ pub(crate) mod fake_probe;
 pub(crate) mod ftdi;
 pub(crate) mod jlink;
 pub(crate) mod stlink;
-#[cfg(feature = "esp")]
-pub(crate) mod esp;
+pub(crate) mod esptool;
 
 use crate::architecture::{
     arm::{
-        communication_interface::DapProbe,
+        communication_interface::{DapProbe, UninitializedArmProbe},
         sequences::{ArmDebugSequence, DefaultArmSequence},
         PortType, SwoAccess,
     },
     riscv::communication_interface::RiscvCommunicationInterface,
+    xtensa::communication_interface::XtensaProbeInterface,
 };
 use crate::error::Error;
 use crate::Session;
-use crate::{
-    architecture::{
-        arm::{
-            ap::memory_ap::mock::MockMemoryAp,
-            communication_interface::{ArmProbeInterface, UninitializedArmProbe},
-            PortType, RawDapAccess, SwoAccess,
-        },
-        riscv::communication_interface::RiscvCommunicationInterface,
-        xtensa::communication_interface::XtensaProbeInterface,
-    },
-    config::{RegistryError, TargetSelector},
-    Memory,
-};
+use crate::config::{RegistryError, TargetSelector};
 use jlink::list_jlink_devices;
+use esptool::list_esptool_devices;
 use std::{convert::TryFrom, fmt};
 
 use self::espusbjtag::list_espjtag_devices;
@@ -44,7 +33,7 @@ const LOW_TARGET_VOLTAGE_WARNING_THRESHOLD: f32 = 1.4;
 pub enum WireProtocol {
     Swd,
     Jtag,
-    Esp,
+    Esptool,
 }
 
 impl fmt::Display for WireProtocol {
@@ -52,7 +41,7 @@ impl fmt::Display for WireProtocol {
         match self {
             WireProtocol::Swd => write!(f, "SWD"),
             WireProtocol::Jtag => write!(f, "JTAG"),
-            WireProtocol::Esp => write!(f, "ESP"),
+            WireProtocol::Esptool => write!(f, "ESP"),
         }
     }
 }
@@ -217,10 +206,7 @@ impl Probe {
 
         list.extend(list_espjtag_devices());
 
-        #[cfg(feature = "esp")]
-        {
-            list.extend(esp::list_esp_devices());
-        }
+        list.extend(list_esptool_devices());
 
         list
     }
@@ -250,13 +236,12 @@ impl Probe {
             Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
             Err(e) => return Err(e),
         };
-        match espusbjtag::EspUsbJtag::new_from_selector(selector) {
+        match espusbjtag::EspUsbJtag::new_from_selector(selector.clone()) {
             Ok(link) => return Ok(Probe::from_specific_probe(link)),
             Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
             Err(e) => return Err(e),
         };
-        #[cfg(feature = "esp")]
-        match esp::Esp::new_from_selector(selector) {
+        match esptool::Esptool::new_from_selector(selector) {
             Ok(link) => return Ok(Probe::from_specific_probe(link)),
             Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound)) => {}
             Err(e) => return Err(e),

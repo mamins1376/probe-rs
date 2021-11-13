@@ -23,8 +23,6 @@ builtin-targets = []
 ftdi = ["libftdi1-sys"]
 ftdi-vendored = ["libftdi1-sys/vendored", "libftdi1-sys/libusb1-sys"]
 
-esp = ["serial", "slip-codec"]
-
 [dependencies]
 anyhow = "1.0.31"
 base64 = "0.13.0"
@@ -45,6 +43,8 @@ rusb = "0.8.0"
 scroll = "0.10.1"
 serde = { version = "1.0.104", features = ["derive"] }
 serde_yaml = "0.8.11"
+serial = "0.4.0"
+slip-codec = "0.2.4"
 static_assertions = "1.1.0"
 svg = "0.10.0"
 thiserror = "1.0.10"
@@ -53,10 +53,6 @@ thousands = "0.2.0"
 # optional
 hexdump = { version = "0.1.0", optional = true }
 libftdi1-sys = { version = "1.1.1", optional = true }
-
-# esp-only
-serial = { version = "0.4.0", optional = true }
-slip-codec = { version = "0.2.4", optional = true }
 
 # path
 probe-rs-target = { path = "../probe-rs-target", version = "0.11.0", features = ["bincode"] }
