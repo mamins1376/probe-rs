@@ -552,7 +552,7 @@ pub enum DebugProbeType {
     StLink,
     JLink,
     EspJtag,
-    Esp,
+    Esptool,
 }
 
 #[derive(Clone)]

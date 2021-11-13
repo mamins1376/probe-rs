@@ -18,14 +18,19 @@ type IoError = std::io::Error;
 
 type ProbeResult<T> = Result<T, DebugProbeError>;
 
+const ENV_TTY: &'static str = "PROBE_ESP_TTY";
+
 pub(crate) fn list_esptool_devices() -> impl Iterator<Item=DebugProbeInfo> {
-    if let Ok(ttys) = var("PROBE_ESP_TTY") {
+    if let Ok(ttys) = var(ENV_TTY) {
+        log::debug!("Using {} variable: `{}'", ENV_TTY, ttys);
         ttys.split(':')
             .map(From::from)
-            .collect()
+            .collect::<Vec<_>>()
     } else if cfg!(windows) {
-        Vec::new()
+        todo!("iterate over windows COM ports")
     } else {
+        log::debug!("Iterating over /dev/ttyUSB*");
+
         let mut options = OpenOptions::new();
         options.read(true);
         options.write(true);
@@ -44,7 +49,7 @@ pub(crate) fn list_esptool_devices() -> impl Iterator<Item=DebugProbeInfo> {
         vendor_id: 0,
         product_id: 0,
         serial_number: id.into(),
-        probe_type: DebugProbeType::Esp,
+        probe_type: DebugProbeType::Esptool,
         hid_interface: None,
     })
 }
